@@ -1,6 +1,6 @@
 # ovpngate
 
-A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) public relay service. Browse the server list, inspect details, and connect to any relay with one keystroke -- all from within a Bubble Tea TUI.
+A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) public relay service powered by [SoftEther VPN](https://github.com/SoftEtherVPN/SoftEtherVPN). Browse the server list, inspect details, and connect to any relay with one keystroke -- all from within a Bubble Tea TUI.
 
 ### Server List
 <div align="center">
