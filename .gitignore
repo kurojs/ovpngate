@@ -1,0 +1,4 @@
+/ovpngate
+*.test
+*.test.exe
+/tmp/

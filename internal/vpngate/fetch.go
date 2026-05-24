@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
+var httpClient = &http.Client{Timeout: 15 * time.Second}
+
 func Fetch() ([]Server, error) {
-	resp, err := http.Get("https://www.vpngate.net/api/iphone/")
+	resp, err := httpClient.Get("https://www.vpngate.net/api/iphone/")
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +52,8 @@ func Fetch() ([]Server, error) {
 			CountryLong:  row[5],
 			CountryShort: row[6],
 			Sessions:     sessions,
+			Operator:     strings.TrimSpace(row[12]),
+			Message:      strings.TrimSpace(row[13]),
 			OvpnConfig:   ovpnBytes,
 		})
 	}

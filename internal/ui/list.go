@@ -5,19 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	styleCursor  = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")).Bold(true)
-	styleNormal  = lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5"))
-	styleMuted   = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
-	styleGreen   = lipgloss.NewStyle().Foreground(lipgloss.Color("#9ece6a"))
-	styleYellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
-	styleHeader  = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7")).Bold(true)
-	styleBorder  = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#414868")).
-			Padding(0, 1)
+	"github.com/kurojs/ovpngate/internal/vpngate"
 )
 
 func countryFlag(cc string) string {
@@ -36,38 +24,222 @@ func countryFlag(cc string) string {
 func pingStyle(ping int) string {
 	s := fmt.Sprintf("%dms", ping)
 	if ping < 30 {
-		return styleGreen.Render(s)
+		return GreenStyle.Render(s)
 	}
-	return styleYellow.Render(s)
+	return WarningStyle.Render(s)
+}
+
+type colWidths struct {
+	country int
+	host    int
+	ping    int
+	speed   int
+	users   int
+}
+
+func calcColWidths(servers []vpngate.Server) colWidths {
+	w := colWidths{country: 7, host: 10, ping: 6, speed: 8, users: 5}
+	for _, s := range servers {
+		if cl := len(s.CountryLong); cl > w.country {
+			w.country = cl
+		}
+		if hl := len(s.HostName); hl > w.host {
+			w.host = hl
+		}
+		if pl := len(fmt.Sprintf("%dms", s.Ping)); pl > w.ping {
+			w.ping = pl
+		}
+		if sl := len(fmt.Sprintf("%dMbps", s.Speed)); sl > w.speed {
+			w.speed = sl
+		}
+		if ul := len(fmt.Sprintf("%d", s.Sessions)); ul > w.users {
+			w.users = ul
+		}
+	}
+	if w.country > 20 {
+		w.country = 20
+	}
+	if w.host > 20 {
+		w.host = 20
+	}
+	return w
 }
 
 func renderList(m Model) string {
 	var b strings.Builder
-	
-	b.WriteString(styleHeader.Render("ovpngate") + "\n")
-	b.WriteString(styleMuted.Render("r refresh · a all · f fast · enter select · q quit") + "\n\n")
+	width := contentWidth(m)
+	cw := calcColWidths(m.filtered)
+
+	titleStyle := TitleStyle
+	if m.titleAnim%2 == 1 {
+		titleStyle = TitleStyleGreen
+	}
+	headerParts := []string{
+		titleStyle.Render("ovpngate"),
+	}
+	if m.filterCountry != "" {
+		headerParts = append(headerParts, AccentStyle.Render(countryFlag(m.filterCountry)+" "+m.filterCountry))
+	} else {
+		headerParts = append(headerParts, MutedStyle.Render("all"))
+	}
+	if m.filter == "fast" {
+		headerParts = append(headerParts, AccentStyle.Render("fast"))
+	}
+	headerParts = append(headerParts,
+		MutedStyle.Render(fmt.Sprintf("(%d)", len(m.filtered))),
+	)
+	b.WriteString("\n")
+	b.WriteString(strings.Join(headerParts, " ") + "\n")
+	b.WriteString(MutedStyle.Render("r ref  a all  f fast  c country  enter details  q quit") + "\n")
+	b.WriteString(Divider(width-6) + "\n")
 
 	if len(m.filtered) == 0 {
-		b.WriteString(styleMuted.Render("no servers found"))
-		return b.String()
+		b.WriteString(MutedStyle.Render("no servers found"))
+		return Panel(b.String(), width)
 	}
 
-	for i, s := range m.filtered {
+	visible := m.listVisibleCount()
+	start := m.listScroll
+	if start < 0 {
+		start = 0
+	}
+	end := start + visible
+	if end > len(m.filtered) {
+		end = len(m.filtered)
+	}
+
+	scrollTotal := len(m.filtered)
+	scrollVisible := visible
+
+	for i := start; i < end; i++ {
+		s := m.filtered[i]
 		flag := countryFlag(s.CountryShort)
-		line := fmt.Sprintf("%s %-30s %s  %dMbps  %d users",
-			flag,
-			s.HostName,
-			pingStyle(s.Ping),
-			s.Speed,
-			s.Sessions,
+
+		countryW := cw.country
+		hostW := cw.host
+
+		country := truncateText(s.CountryLong, countryW)
+		host := truncateText(s.HostName, hostW)
+
+		ping := fmt.Sprintf("%dms", s.Ping)
+		speed := fmt.Sprintf("%dMbps", s.Speed)
+		users := fmt.Sprintf("%d", s.Sessions)
+
+		operator := s.Operator
+		if operator == "" {
+			operator = "-"
+		}
+
+		base := fmt.Sprintf("%s %-*s %-*s %*s %*s %*s",
+			flag, countryW, country, hostW, host,
+			cw.ping, ping, cw.speed, speed, cw.users, users,
 		)
 
-		if i == m.cursor {
-			b.WriteString(styleCursor.Render("▶ "+line) + "\n")
-		} else {
-			b.WriteString(styleNormal.Render("  "+line) + "\n")
+		innerWidth := width - 6
+		opWidth := innerWidth - lipgloss.Width(base) - 2
+		if opWidth < 4 {
+			opWidth = 4
 		}
+		line := base + "  " + truncateText(operator, opWidth)
+
+		selected := i == m.cursor
+		item := ListItem(line, selected)
+
+		scrollMark := ""
+		if scrollTotal > scrollVisible {
+			pos := float64(m.cursor) / float64(scrollTotal-1)
+			barIdx := int(pos * float64(scrollVisible-1))
+			if i-start == barIdx {
+				scrollMark = " " + AccentStyle.Render("█")
+			}
+		}
+		b.WriteString(item + scrollMark + "\n")
 	}
 
-	return styleBorder.Render(b.String())
+	pos := fmt.Sprintf("%d-%d of %d", start+1, end, len(m.filtered))
+	b.WriteString(Divider(width-6) + "\n")
+	b.WriteString(MutedStyle.Render(pos))
+
+	return Panel(b.String(), width)
+}
+
+func (m Model) listVisibleCount() int {
+	if m.height <= 0 {
+		return 10
+	}
+	visible := m.height - 12
+	if visible < 6 {
+		visible = 6
+	}
+	return visible
+}
+
+func (m *Model) adjustListScroll() {
+	visible := m.listVisibleCount()
+	if m.cursor < m.listScroll {
+		m.listScroll = m.cursor
+	}
+	if m.cursor >= m.listScroll+visible {
+		m.listScroll = m.cursor - visible + 1
+	}
+	if m.listScroll < 0 {
+		m.listScroll = 0
+	}
+	maxScroll := len(m.filtered) - visible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.listScroll > maxScroll {
+		m.listScroll = maxScroll
+	}
+}
+
+func (m *Model) pageUp() {
+	visible := m.listVisibleCount()
+	if m.cursor > 0 {
+		m.cursor -= visible
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m.adjustListScroll()
+	}
+}
+
+func (m *Model) pageDown() {
+	visible := m.listVisibleCount()
+	if m.cursor < len(m.filtered)-1 {
+		m.cursor += visible
+		if m.cursor > len(m.filtered)-1 {
+			m.cursor = len(m.filtered) - 1
+		}
+		m.adjustListScroll()
+	}
+}
+
+func contentWidth(m Model) int {
+	if m.width == 0 {
+		return 72
+	}
+	w := m.width - 4
+	if w < 48 {
+		w = 48
+	}
+	if w > 96 {
+		w = 96
+	}
+	return w
+}
+
+func truncateText(text string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= max {
+		return text
+	}
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
 }
