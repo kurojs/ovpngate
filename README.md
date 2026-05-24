@@ -2,6 +2,20 @@
 
 A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) public relay service. Browse the server list, inspect details, and connect to any relay with one keystroke -- all from within a Bubble Tea TUI.
 
+### Server List
+<div align="center">
+  <table>
+    <tr>
+      <td><img src="https://i.imgur.com/qLqg45F.png" width="400" alt="Server List"/></td>
+      <td><img src="https://i.imgur.com/1Rqkcto.png" width="400" alt="Server Details"/></td>
+    </tr>
+    <tr>
+      <td align="center"><em>Live server list with country flag, ping, speed, sessions, and operator</em></td>
+      <td align="center"><em>Server detail with stats, operator message, and connection controls</em></td>
+    </tr>
+  </table>
+</div>
+
 ## Features
 
 - Fetches live server list from the VPN Gate API
