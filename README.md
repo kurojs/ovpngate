@@ -32,8 +32,11 @@ A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) pub
 ## Prerequisites
 
 - [OpenVPN](https://openvpn.net/) -- the underlying VPN client
-- `sudo` -- for OpenVPN TUN/TAP device creation
-- `iproute2` -- for tunnel IP detection (preinstalled)
+- `sudo` -- for OpenVPN TUN/TAP device creation (preinstalled on most systems)
+- `iproute2` -- for tunnel IP detection (preinstalled on most systems)
+
+> [!NOTE]
+> Installing via AUR (`yay -S ovpngate`) pulls all dependencies automatically.
 
 ## Installation
 
