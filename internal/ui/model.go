@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kurojs/ovpngate/internal/connect"
+	"github.com/kurojs/ovpngate/internal/favstore"
 	"github.com/kurojs/ovpngate/internal/vpngate"
 )
 
@@ -60,16 +61,22 @@ type Model struct {
 	spinner    spinner.Model
 	err        error
 	logs       []string
+
+	favStore         *favstore.Store
+	offlineFavorites []vpngate.Server
+	offlineSet       map[string]bool
 }
 
-func InitialModel() Model {
+func InitialModel(store *favstore.Store) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 
 	return Model{
-		phase:   phaseLoading,
-		filter:  "all",
-		spinner: s,
+		phase:      phaseLoading,
+		filter:     "all",
+		spinner:    s,
+		favStore:   store,
+		offlineSet: make(map[string]bool),
 	}
 }
 
@@ -131,6 +138,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.favStore.Save()
 			connect.Disconnect()
 			return m, tea.Quit
 
@@ -160,9 +168,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.phase == phaseList {
 				m.phase = phaseDetail
 			} else if m.phase == phaseDetail && !m.isConnected() {
-				m.phase = phaseConnecting
-				m.logs = []string{"connecting..."}
-				return m, connectToServer(m.filtered[m.cursor])
+				if len(m.filtered) > 0 && !m.offlineSet[m.filtered[m.cursor].IP] {
+					m.phase = phaseConnecting
+					m.logs = []string{"connecting..."}
+					return m, connectToServer(m.filtered[m.cursor])
+				}
 			}
 
 		case "esc":
@@ -204,6 +214,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.phase == phaseList {
 				m.cycleCountry()
 			}
+
+		case "v":
+			if m.phase == phaseList {
+				m.filter = "fav"
+				m.filterCountry = ""
+				m.filterCountryIdx = 0
+				m.applyFilter()
+			}
+
+		case "s":
+			m.toggleFavorite()
 		}
 
 	case msgServersFetched:
@@ -214,6 +235,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.servers = msg.servers
 		m.buildCountryList()
+		m.detectOfflineFavorites()
 		m.applyFilter()
 		m.phase = phaseList
 		m.cursor = 0
@@ -286,7 +308,33 @@ func (m *Model) cycleCountry() {
 	} else {
 		m.filterCountry = m.filterCountries[m.filterCountryIdx-1]
 	}
+	if m.filter == "fav" {
+		m.filter = "all"
+	}
 	m.applyFilter()
+}
+
+func (m *Model) detectOfflineFavorites() {
+	favs := m.favStore.GetAll()
+	m.offlineFavorites = nil
+	m.offlineSet = make(map[string]bool)
+
+	online := make(map[string]bool)
+	for _, s := range m.servers {
+		online[s.IP] = true
+	}
+
+	for _, f := range favs {
+		if !online[f.IP] {
+			m.offlineFavorites = append(m.offlineFavorites, vpngate.Server{
+				HostName:     f.HostName,
+				IP:           f.IP,
+				CountryLong:  f.CountryLong,
+				CountryShort: f.CountryShort,
+			})
+			m.offlineSet[f.IP] = true
+		}
+	}
 }
 
 func (m *Model) applyFilter() {
@@ -316,6 +364,17 @@ func (m *Model) applyFilter() {
 		m.filtered = sorted
 	}
 
+	if m.filter == "fav" {
+		var favs []vpngate.Server
+		for _, s := range m.filtered {
+			if m.favStore.IsFavorite(s.IP) {
+				favs = append(favs, s)
+			}
+		}
+		favs = append(favs, m.offlineFavorites...)
+		m.filtered = favs
+	}
+
 	if len(m.filtered) == 0 {
 		m.cursor = 0
 		m.listScroll = 0
@@ -325,6 +384,47 @@ func (m *Model) applyFilter() {
 		m.cursor = len(m.filtered) - 1
 	}
 	m.adjustListScroll()
+}
+
+func (m *Model) toggleFavorite() {
+	if m.phase != phaseList && m.phase != phaseDetail {
+		return
+	}
+
+	if m.phase == phaseList {
+		if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
+			return
+		}
+
+		ip := m.filtered[m.cursor].IP
+		offline := m.offlineSet[ip]
+		if offline {
+			m.favStore.Remove(ip)
+			m.detectOfflineFavorites()
+			m.applyFilter()
+			return
+		}
+		if m.favStore.IsFavorite(ip) {
+			m.favStore.Remove(ip)
+		} else {
+			s := m.filtered[m.cursor]
+			m.favStore.Add(s.IP, s.HostName, s.CountryShort, s.CountryLong)
+		}
+		m.detectOfflineFavorites()
+		m.applyFilter()
+		return
+	}
+
+	if m.phase == phaseDetail && len(m.filtered) > 0 {
+		s := m.filtered[m.cursor]
+		if m.favStore.IsFavorite(s.IP) {
+			m.favStore.Remove(s.IP)
+		} else {
+			m.favStore.Add(s.IP, s.HostName, s.CountryShort, s.CountryLong)
+		}
+		m.detectOfflineFavorites()
+		return
+	}
 }
 
 func (m Model) View() string {

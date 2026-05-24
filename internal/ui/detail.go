@@ -14,6 +14,16 @@ func renderDetail(m Model) string {
 	s := m.filtered[m.cursor]
 	var b strings.Builder
 	width := contentWidth(m)
+	isOffline := m.offlineSet[s.IP]
+	isFav := m.favStore.IsFavorite(s.IP)
+
+	if isFav {
+		favText := GreenStyle.Render("★ favorite")
+		if alias := m.favStore.Get(s.IP); alias != nil && alias.Alias != "" {
+			favText = GreenStyle.Render("★ favorite \u2014 " + alias.Alias)
+		}
+		b.WriteString(favText + "\n")
+	}
 
 	titleStyle := TitleStyle
 	if m.titleAnim%2 == 1 {
@@ -23,6 +33,14 @@ func renderDetail(m Model) string {
 	b.WriteString(title + "\n")
 	b.WriteString(SubtitleStyle.Render(s.HostName) + "\n")
 	b.WriteString(MutedStyle.Render(s.IP) + "\n\n")
+
+	if isOffline {
+		b.WriteString(MutedStyle.Render("server is offline") + "\n\n")
+		b.WriteString(KeyHint("s", "Unstar") + "  ")
+		b.WriteString(KeyHint("esc", "Back") + "  ")
+		b.WriteString(KeyHint("q", "Quit"))
+		return Panel(b.String(), width)
+	}
 
 	stats := joinStats(
 		statBlock("ping", pingStyle(s.Ping)),
@@ -65,12 +83,16 @@ func renderDetail(m Model) string {
 		b.WriteString("\n")
 	}
 
-	hints := strings.Join([]string{
+	hints := []string{
+		KeyHint("s", "Star"),
 		KeyHint("esc", "Back"),
 		KeyHint("q", "Quit"),
-	}, "  ")
+	}
+	if isFav {
+		hints[0] = KeyHint("s", "Unstar")
+	}
 	b.WriteString(Divider(width-6) + "\n")
-	b.WriteString(hints)
+	b.WriteString(strings.Join(hints, "  "))
 
 	return Panel(b.String(), width)
 }

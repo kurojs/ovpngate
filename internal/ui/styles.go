@@ -81,10 +81,20 @@ func KeyHint(key, desc string) string {
 	return keyStyle + " " + descStyle
 }
 
-func ListItem(label string, selected bool) string {
+func ListItem(label string, selected, isFav bool) string {
+	prefix := "  "
+	if isFav {
+		prefix = "★ "
+	}
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
 	if selected {
 		style = style.Foreground(lipgloss.Color(colorPurpleLight))
 	}
-	return style.Render("  " + label)
+	return style.Render(prefix + label)
+}
+
+func OfflineItem(label string) string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorTextMuted)).
+		Render("  " + label + " (offline)")
 }

@@ -20,7 +20,9 @@ A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) pub
 
 - Fetches live server list from the VPN Gate API
 - Server detail view with ping, speed, session count, operator info, and server message
-- Filter servers by all, fastest, or specific country
+- Filter servers by all, fastest, favorites, or specific country
+- Favorite servers (★) with persistent storage across sessions
+- Offline favorite detection — grayed out when no longer available
 - Cancel in-flight connections with a single keystroke
 - Keyboard-driven navigation with scrollbar and paging
 - Automatic sudo elevation at startup (no prompts during use)
@@ -83,7 +85,9 @@ On first launch you will be prompted for your sudo password. This caches credent
 | `r` | List | Refresh server list |
 | `a` | List | Show all servers |
 | `f` | List | Sort by fastest |
+| `v` | List | Show only favorites |
 | `c` | List | Cycle country filter |
+| `s` | List / Detail | Toggle favorite (star) |
 | `d` | Connected | Disconnect |
 | `q` | Anywhere | Quit |
 
@@ -127,6 +131,9 @@ internal/ui/
   list.go              Server list rendering with fixed-width columns
   detail.go            Server detail and connection status rendering
   styles.go            Lipgloss styles and panel primitives
+
+internal/favstore/
+  favstore.go          JSON-persisted favorite servers with CRUD operations
 
 internal/vpngate/
   server.go            Server data structure

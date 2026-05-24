@@ -69,6 +69,7 @@ func renderList(m Model) string {
 	var b strings.Builder
 	width := contentWidth(m)
 	cw := calcColWidths(m.filtered)
+	hasOffline := len(m.offlineFavorites) > 0
 
 	titleStyle := TitleStyle
 	if m.titleAnim%2 == 1 {
@@ -85,16 +86,26 @@ func renderList(m Model) string {
 	if m.filter == "fast" {
 		headerParts = append(headerParts, AccentStyle.Render("fast"))
 	}
+	if m.filter == "fav" && !hasOffline {
+		headerParts = append(headerParts, AccentStyle.Render("fav"))
+	}
+	if m.filter == "fav" && hasOffline {
+		headerParts = append(headerParts, GreenStyle.Render(fmt.Sprintf("fav (%d offline)", len(m.offlineFavorites))))
+	}
 	headerParts = append(headerParts,
 		MutedStyle.Render(fmt.Sprintf("(%d)", len(m.filtered))),
 	)
 	b.WriteString("\n")
 	b.WriteString(strings.Join(headerParts, " ") + "\n")
-	b.WriteString(MutedStyle.Render("r ref  a all  f fast  c country  enter details  q quit") + "\n")
+	b.WriteString(MutedStyle.Render("r ref  a all  f fast  v fav  c country  s star  enter  q quit") + "\n")
 	b.WriteString(Divider(width-6) + "\n")
 
-	if len(m.filtered) == 0 {
-		b.WriteString(MutedStyle.Render("no servers found"))
+	if len(m.filtered) == 0 && !hasOffline {
+		if m.filter == "fav" {
+			b.WriteString(MutedStyle.Render("no favorites yet — press s to star a server"))
+		} else {
+			b.WriteString(MutedStyle.Render("no servers found"))
+		}
 		return Panel(b.String(), width)
 	}
 
@@ -121,9 +132,18 @@ func renderList(m Model) string {
 		country := truncateText(s.CountryLong, countryW)
 		host := truncateText(s.HostName, hostW)
 
-		ping := fmt.Sprintf("%dms", s.Ping)
-		speed := fmt.Sprintf("%dMbps", s.Speed)
-		users := fmt.Sprintf("%d", s.Sessions)
+		isOffline := m.offlineSet[s.IP]
+
+		var ping, speed, users string
+		if isOffline {
+			ping = MutedStyle.Render("-")
+			speed = MutedStyle.Render("-")
+			users = MutedStyle.Render("-")
+		} else {
+			ping = fmt.Sprintf("%dms", s.Ping)
+			speed = fmt.Sprintf("%dMbps", s.Speed)
+			users = fmt.Sprintf("%d", s.Sessions)
+		}
 
 		operator := s.Operator
 		if operator == "" {
@@ -142,8 +162,24 @@ func renderList(m Model) string {
 		}
 		line := base + "  " + truncateText(operator, opWidth)
 
+		isFav := m.favStore.IsFavorite(s.IP)
 		selected := i == m.cursor
-		item := ListItem(line, selected)
+
+		if isOffline {
+			item := OfflineItem(line)
+			scrollMark := ""
+			if scrollTotal > scrollVisible {
+				pos := float64(m.cursor) / float64(scrollTotal-1)
+				barIdx := int(pos * float64(scrollVisible-1))
+				if i-start == barIdx {
+					scrollMark = " " + AccentStyle.Render("█")
+				}
+			}
+			b.WriteString(item + scrollMark + "\n")
+			continue
+		}
+
+		item := ListItem(line, selected, isFav)
 
 		scrollMark := ""
 		if scrollTotal > scrollVisible {
