@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"os/exec"
 	"sort"
 	"time"
 
@@ -37,6 +38,8 @@ type msgConnected struct {
 type msgDisconnect struct{}
 
 type msgCancelled struct{}
+
+type msgSudoRefresh struct{}
 
 type msgTitleTick struct{}
 
@@ -85,7 +88,14 @@ func (m Model) Init() tea.Cmd {
 		m.spinner.Tick,
 		fetchServers(),
 		titleTickCmd(),
+		sudoRefreshCmd(),
 	)
+}
+
+func sudoRefreshCmd() tea.Cmd {
+	return tea.Tick(4*time.Minute, func(t time.Time) tea.Msg {
+		return msgSudoRefresh{}
+	})
 }
 
 func titleTickCmd() tea.Cmd {
@@ -265,6 +275,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.connected = vpngate.Server{}
 		m.assignedIP = ""
 		m.phase = phaseList
+
+	case msgSudoRefresh:
+		go func() {
+			_ = exec.Command("sudo", "-n", "-v").Run()
+		}()
+		return m, sudoRefreshCmd()
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -26,6 +27,7 @@ var errPIDNotReady = errors.New("pid not ready yet")
 
 var ErrCancelConnect = errors.New("connection cancelled")
 var cancelCh chan struct{}
+var currentCmd *exec.Cmd
 
 func checkOpenVPN() error {
 	if _, err := exec.LookPath("openvpn"); err != nil {
@@ -98,8 +100,8 @@ func Connect(hostname string, ovpnConfig []byte) (int, error) {
 	}
 
 	currentPID = cmd.Process.Pid
+	currentCmd = cmd
 	_ = os.WriteFile(currentPIDPath, []byte(strconv.Itoa(currentPID)), 0644)
-	_ = cmd.Process.Release()
 	return currentPID, nil
 }
 
@@ -107,6 +109,7 @@ func Cancel() {
 	if cancelCh != nil {
 		close(cancelCh)
 	}
+	killCurrentProcess()
 	cleanupFiles()
 }
 
@@ -142,17 +145,16 @@ func WaitForTunnel() (string, error) {
 }
 
 func Disconnect() error {
-	pid := currentPID
-	if pid == 0 && currentPIDPath != "" {
-		if p, err := readPID(); err == nil {
-			pid = p
-		}
-	}
-	if pid > 0 {
-		_ = killCmd(pid).Run()
-	}
+	killCurrentProcess()
 	cleanupFiles()
 	return nil
+}
+
+func killCurrentProcess() {
+	if currentCmd != nil && currentCmd.Process != nil {
+		_ = currentCmd.Process.Signal(syscall.SIGTERM)
+		_ = currentCmd.Wait()
+	}
 }
 
 func prepareTempDir() error {
@@ -175,6 +177,7 @@ func cleanupFiles() {
 	currentAuthPath = ""
 	currentStatusPath = ""
 	currentPID = 0
+	currentCmd = nil
 }
 
 func readPID() (int, error) {
@@ -350,9 +353,4 @@ func openvpnCmd(args []string) *exec.Cmd {
 	return exec.Command("sudo", full...)
 }
 
-func killCmd(pid int) *exec.Cmd {
-	if os.Geteuid() == 0 {
-		return exec.Command("kill", strconv.Itoa(pid))
-	}
-	return exec.Command("sudo", "kill", strconv.Itoa(pid))
-}
+

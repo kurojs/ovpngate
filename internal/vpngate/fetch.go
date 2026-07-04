@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var httpClient = &http.Client{Timeout: 15 * time.Second}
+var httpClient = &http.Client{Timeout: 60 * time.Second}
 
 func Fetch() ([]Server, error) {
 	resp, err := httpClient.Get("https://www.vpngate.net/api/iphone/")
