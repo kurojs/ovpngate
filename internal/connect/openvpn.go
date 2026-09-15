@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -21,6 +20,8 @@ var (
 	currentAuthPath   string
 	currentStatusPath string
 	currentPID        int
+	currentHelperPID  int
+	skipCleanup       bool
 )
 
 var errPIDNotReady = errors.New("pid not ready yet")
@@ -28,13 +29,6 @@ var errPIDNotReady = errors.New("pid not ready yet")
 var ErrCancelConnect = errors.New("connection cancelled")
 var cancelCh chan struct{}
 var currentCmd *exec.Cmd
-
-func checkOpenVPN() error {
-	if _, err := exec.LookPath("openvpn"); err != nil {
-		return fmt.Errorf("openvpn not found: install it first (e.g. 'sudo pacman -S openvpn')")
-	}
-	return nil
-}
 
 func Connect(hostname string, ovpnConfig []byte) (int, error) {
 	if err := checkOpenVPN(); err != nil {
@@ -54,7 +48,7 @@ func Connect(hostname string, ovpnConfig []byte) (int, error) {
 	currentStatusPath = filepath.Join(tempDir, "openvpn.status")
 	currentPID = 0
 
-	if err := ensureSudo(); err != nil {
+	if err := ensureElevation(); err != nil {
 		return 0, err
 	}
 
@@ -92,15 +86,12 @@ func Connect(hostname string, ovpnConfig []byte) (int, error) {
 	}
 	defer logFile.Close()
 
-	cmd := openvpnCmd(args)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("failed to start OpenVPN: %w", err)
+	if err := startOpenVPN(args, logFile); err != nil {
+		// Nothing may have started: reset state so the temp dir is not leaked.
+		cleanupFiles()
+		return 0, err
 	}
 
-	currentPID = cmd.Process.Pid
-	currentCmd = cmd
 	_ = os.WriteFile(currentPIDPath, []byte(strconv.Itoa(currentPID)), 0644)
 	return currentPID, nil
 }
@@ -150,13 +141,6 @@ func Disconnect() error {
 	return nil
 }
 
-func killCurrentProcess() {
-	if currentCmd != nil && currentCmd.Process != nil {
-		_ = currentCmd.Process.Signal(syscall.SIGTERM)
-		_ = currentCmd.Wait()
-	}
-}
-
 func prepareTempDir() error {
 	var err error
 	tempDir, err = os.MkdirTemp("", "ovpngate-*")
@@ -167,7 +151,7 @@ func prepareTempDir() error {
 }
 
 func cleanupFiles() {
-	if tempDir != "" {
+	if tempDir != "" && !skipCleanup {
 		_ = os.RemoveAll(tempDir)
 		tempDir = ""
 	}
@@ -178,22 +162,7 @@ func cleanupFiles() {
 	currentStatusPath = ""
 	currentPID = 0
 	currentCmd = nil
-}
-
-func readPID() (int, error) {
-	data, err := os.ReadFile(currentPIDPath)
-	if err != nil {
-		return 0, fmt.Errorf("openvpn pid file missing: %w", err)
-	}
-	pidStr := strings.TrimSpace(string(data))
-	if pidStr == "" {
-		return 0, errPIDNotReady
-	}
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid pid file: %w", err)
-	}
-	return pid, nil
+	skipCleanup = false
 }
 
 func needsAuth(ovpnConfig []byte) bool {
@@ -211,26 +180,6 @@ func sanitizeName(name string) string {
 		return "vpn"
 	}
 	return b.String()
-}
-
-func findTunnelIP() (string, bool) {
-	out, err := exec.Command("ip", "-o", "-4", "addr", "show").Output()
-	if err != nil {
-		return "", false
-	}
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
-			continue
-		}
-		iface := fields[1]
-		if strings.HasPrefix(iface, "tun") || strings.HasPrefix(iface, "tap") {
-			ip := strings.Split(fields[3], "/")[0]
-			return ip, true
-		}
-	}
-	return "", false
 }
 
 func logError() error {
@@ -301,16 +250,6 @@ func extractCipher(ovpnConfig []byte) string {
 	return ""
 }
 
-func ensureSudo() error {
-	if os.Geteuid() == 0 {
-		return nil
-	}
-	if err := exec.Command("sudo", "-n", "true").Run(); err != nil {
-		return fmt.Errorf("sudo credentials expired: run 'sudo -v' again")
-	}
-	return nil
-}
-
 func sanitizeConfig(raw []byte) []byte {
 	lines := strings.Split(string(raw), "\n")
 	out := make([]string, 0, len(lines))
@@ -344,13 +283,3 @@ func sanitizeConfig(raw []byte) []byte {
 	}
 	return []byte(strings.Join(out, "\n"))
 }
-
-func openvpnCmd(args []string) *exec.Cmd {
-	if os.Geteuid() == 0 {
-		return exec.Command("openvpn", args...)
-	}
-	full := append([]string{"openvpn"}, args...)
-	return exec.Command("sudo", full...)
-}
-
-

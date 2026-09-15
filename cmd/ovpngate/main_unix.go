@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 import (
@@ -11,7 +13,8 @@ import (
 )
 
 func main() {
-	if os.Geteuid() != 0 {
+	// Cache sudo credentials so OpenVPN can be launched without further prompts.
+	if os.Getuid() != 0 {
 		cmd := exec.Command("sudo", "-v")
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout

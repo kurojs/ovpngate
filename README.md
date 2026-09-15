@@ -25,7 +25,7 @@ A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) pub
 - Offline favorite detection — grayed out when no longer available
 - Cancel in-flight connections with a single keystroke
 - Keyboard-driven navigation with scrollbar and paging
-- Automatic sudo elevation at startup (no prompts during use)
+- Automatic privilege elevation at CONNECT time only (sudo on Linux/macOS, UAC on Windows) -- the TUI itself always runs unprivileged in your own terminal
 - Sanitized OpenVPN configuration (strips unsafe directives)
 - Cipher auto-detection from server config
 - Temporary per-run directory with full cleanup
@@ -34,15 +34,22 @@ A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) pub
 ## Prerequisites
 
 - [OpenVPN](https://openvpn.net/) -- the underlying VPN client
-- `sudo` -- for OpenVPN TUN/TAP device creation (preinstalled on most systems)
-- `iproute2` -- for tunnel IP detection (preinstalled on most systems)
+- Admin privileges -- for OpenVPN TUN/TAP device creation
+
+Platform-specific:
+
+| Platform | OpenVPN install | Tunnel IP detection | Elevation |
+|----------|-----------------|-------------------|-----------|
+| Linux    | `sudo pacman -S openvpn` or distro equivalent | `iproute2` (`ip addr show`) | `sudo` |
+| macOS    | `brew install openvpn` | `ifconfig` (built-in) | `sudo` |
+| Windows  | [OpenVPN Community Installer](https://openvpn.net/community-downloads/) | OpenVPN log parsing (`findTunnelIP`) | UAC prompt at connect |
 
 > [!NOTE]
-> Installing via AUR (`yay -S ovpngate`) pulls all dependencies automatically.
+> Installing via AUR (`yay -S ovpngate`) pulls all dependencies automatically on Arch Linux.
 
 ## Installation
 
-### AUR (recommended)
+### Linux (AUR, recommended for Arch)
 
 ```bash
 yay -S ovpngate
@@ -55,6 +62,21 @@ git clone https://github.com/kurojs/ovpngate.git
 cd ovpngate
 go build -ldflags="-s -w" -o ovpngate ./cmd/ovpngate/
 sudo cp ovpngate /usr/local/bin/
+# or on Windows:
+#   .\ovpngate.exe
+```
+
+### Cross-compile
+
+Go builds natively for every platform:
+
+```bash
+# Linux
+GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ovpngate-linux ./cmd/ovpngate/
+# macOS
+GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ovpngate-darwin ./cmd/ovpngate/
+# Windows
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ovpngate.exe ./cmd/ovpngate/
 ```
 
 ### With Go installed
@@ -71,7 +93,7 @@ Run the program:
 ovpngate
 ```
 
-On first launch you will be prompted for your sudo password. This caches credentials for the session so OpenVPN can be launched without further prompts. After that the TUI opens and the server list loads automatically.
+On first launch the server list loads automatically -- no elevation is requested yet. Elevation happens only when you actually connect: `sudo` (Linux/macOS) or a UAC admin prompt (Windows). The TUI itself always runs unprivileged in your own terminal.
 
 ### Key bindings
 
@@ -105,13 +127,13 @@ ovpngate fetches a CSV list of public OpenVPN relays from the VPN Gate API. Each
 
 When you initiate a connection:
 
-1. The program requests sudo credentials (at launch) to cache them for the session.
+1. The program stages the connection: on Windows an elevated helper is spawned via UAC (PowerShell `Start-Process -Verb RunAs`), which alone has the privileges to launch OpenVPN; on Unix `sudo` is used directly.
 2. A temporary directory is created for all runtime artifacts.
 3. The raw OpenVPN config is sanitized: unsafe directives (`daemon`, `log`, `writepid`, `persist-key`, `auth-user-pass`, etc.) are removed.
 4. The sanitized config and an auth file with public credentials (`vpn`/`vpn`) are written to the temp directory.
 5. The required cipher is extracted from the server config and set explicitly.
-6. OpenVPN is launched via `sudo` with the prepared config, redirecting output to a log file.
-7. The TUI polls `ip addr show` every 500ms for a `tun` or `tap` interface.
+6. OpenVPN is launched with the prepared config, redirecting output to a log file.
+7. The TUI polls every 500ms for a `tun`/`tap` interface (via `ip addr show` on Linux, `ifconfig` on macOS, or OpenVPN log parsing on Windows).
 8. When the tunnel interface appears, the assigned IP is captured and the connection is considered active.
 9. OpenVPN log output is monitored for known error patterns (cipher mismatch, auth failure, TLS errors, DNS failure, connection reset) and surfaced immediately.
 
@@ -121,10 +143,16 @@ On disconnect, the OpenVPN process is terminated and the temporary directory is 
 
 ```
 cmd/ovpngate/
-  main.go              Entry point, sudo prompt, Bubble Tea bootstrap
+  main_unix.go         Entry point, sudo prompt, Bubble Tea bootstrap (Linux/macOS/BSD)
+  main_windows.go      Entry point, helper dispatch, Bubble Tea bootstrap (Windows)
 
 internal/connect/
-  openvpn.go           OpenVPN lifecycle: Connect, WaitForTunnel, Cancel, Disconnect
+  openvpn.go           Shared OpenVPN lifecycle: Connect, WaitForTunnel, Cancel, Disconnect
+  openvpn_unix.go      Unix helpers: sudo elevation, startOpenVPN hook, SIGTERM lifecycle
+  openvpn_linux.go     Linux tunnel IP detection (iproute2)
+  openvpn_darwin.go    macOS tunnel IP detection (ifconfig)
+  openvpn_windows.go   Windows helpers: PowerShell RunAs elevation, helper protocol, log parsing (findTunnelIP)
+  helper_windows.go    Elevated OpenVPN/helper mode (RunHelper, helperSpec, cancel file protocol)
 
 internal/ui/
   model.go             Bubble Tea model, message types, update loop
@@ -154,10 +182,10 @@ The `-s -w` flags strip debug information, reducing the binary size.
 ## Troubleshooting
 
 **"openvpn not found"**  
-Install OpenVPN: `sudo pacman -S openvpn` (Arch) or your distribution's equivalent.
+Install OpenVPN: `sudo pacman -S openvpn` (Arch), `brew install openvpn` (macOS), or the [OpenVPN Community Installer](https://openvpn.net/community-downloads/) (Windows).
 
-**"sudo authentication failed"**  
-Enter your sudo password when prompted. This is required to run OpenVPN with the privileges needed for TUN/TAP device creation.
+**"sudo authentication failed"** / **UAC prompt denied**  
+Privileges are required to run OpenVPN for TUN/TAP device creation. Enter your sudo password or accept the UAC prompt. On Windows you can also right-click the executable and select "Run as administrator".
 
 **Connection timeout**  
 Public VPN relays can be slow or saturated. Try a different server -- those with lower session counts and higher speeds are more reliable. The last log line is included in the error message to help diagnose the issue.
