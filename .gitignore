@@ -2,3 +2,9 @@
 *.test
 *.test.exe
 /tmp/
+# Windows build artifacts (literal env-var folder created by install.ps1)
+/%LOCALAPPDATA%/
+
+# build artifact with unexpanded env var (Windows install script bug)
+%LOCALAPPDATA%/
+
