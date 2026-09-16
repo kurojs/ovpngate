@@ -9,9 +9,9 @@ import (
 const (
 	colorText        = "#F3F6F9"
 	colorTextMuted   = "#5C6170"
-	colorPurpleLight = "#C4B5FD"
-	colorPurple      = "#A78BFA"
-	colorPurpleDim   = "#8B7CC0"
+	colorPurpleLight = "#9C9CD4"
+	colorPurple      = "#8080C0"
+	colorPurpleDim   = "#6E6E9E"
 	colorGreen       = "#86EFAC"
 	colorWarning     = "#FCD34D"
 	colorError       = "#FCA5A5"

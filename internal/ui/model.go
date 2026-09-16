@@ -137,6 +137,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
+		// Windows: ConPTY can report the scrollback/palette size instead of the
+		// visible window. Clamp to sane bounds so the list viewport never
+		// overflows the visible screen (header/footer otherwise scroll off).
+		if msg.Height < 6 {
+			msg.Height = 24
+		} else if msg.Height > 200 {
+			msg.Height = 24
+		}
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
