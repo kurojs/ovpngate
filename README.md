@@ -1,6 +1,6 @@
 # ovpngate
 
-A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) public relay service powered by [SoftEther VPN](https://github.com/SoftEtherVPN/SoftEtherVPN). Browse the server list, inspect details, and connect to any relay with one keystroke -- all from within a Bubble Tea TUI.
+A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) public relay service powered by [SoftEther VPN](https://github.com/SoftEtherVPN/SoftEtherVPN). Browse the server list, inspect details, and connect to any relay with one keystroke -- all from a native terminal UI.
 
 ### Server List
 <div align="center">
@@ -149,8 +149,8 @@ On disconnect, the OpenVPN process is terminated and the temporary directory is 
 
 ```
 cmd/ovpngate/
-  main_unix.go         Entry point, sudo prompt, Bubble Tea bootstrap (Linux/macOS/BSD)
-  main_windows.go      Entry point, helper dispatch, Bubble Tea bootstrap (Windows)
+  main_unix.go         Entry point, sudo prompt, TUI bootstrap (Linux/macOS/BSD)
+  main_windows.go      Entry point, helper dispatch, console TUI bootstrap (Windows)
 
 internal/connect/
   openvpn.go           Shared OpenVPN lifecycle: Connect, WaitForTunnel, Cancel, Disconnect
@@ -161,7 +161,7 @@ internal/connect/
   helper_windows.go    Elevated OpenVPN/helper mode (RunHelper, helperSpec, cancel file protocol)
 
 internal/ui/
-  model.go             Bubble Tea model, message types, update loop
+  model.go             TUI model, message types, update loop
   list.go              Server list rendering with fixed-width columns
   detail.go            Server detail and connection status rendering
   styles.go            Lipgloss styles and panel primitives
