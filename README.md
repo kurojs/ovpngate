@@ -49,35 +49,35 @@ Platform-specific:
 
 ## Installation
 
+### Windows (recommended)
+
+Run the installer in PowerShell. It downloads the latest release binary, installs it to `%LOCALAPPDATA%\ovpngate\ovpngate.exe`, and adds that directory to your user PATH:
+
+```powershell
+irm https://raw.githubusercontent.com/kurojs/ovpngate/main/install.ps1 | iex
+```
+
+Re-running it updates to the latest release only when the installed version differs. Verify with:
+
+```powershell
+ovpngate --version
+```
+
 ### Linux (AUR, recommended for Arch)
 
 ```bash
 yay -S ovpngate
 ```
 
-### From source
+### Prebuilt binaries (Linux / macOS / Windows)
 
-```bash
-git clone https://github.com/kurojs/ovpngate.git
-cd ovpngate
-go build -ldflags="-s -w" -o ovpngate ./cmd/ovpngate/
-sudo cp ovpngate /usr/local/bin/
-# or on Windows:
-#   .\ovpngate.exe
-```
+Download the archive for your platform from the [latest release](https://github.com/kurojs/ovpngate/releases/latest) and verify it against `checksums.txt`:
 
-### Cross-compile
-
-Go builds natively for every platform:
-
-```bash
-# Linux
-GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ovpngate-linux ./cmd/ovpngate/
-# macOS
-GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ovpngate-darwin ./cmd/ovpngate/
-# Windows
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ovpngate.exe ./cmd/ovpngate/
-```
+| Asset | Platform |
+|-------|----------|
+| `ovpngate-windows-amd64.exe` | Windows x86_64 |
+| `ovpngate-linux-amd64` / `ovpngate-linux-arm64` | Linux |
+| `ovpngate-darwin-amd64` / `ovpngate-darwin-arm64` | macOS |
 
 ### With Go installed
 
