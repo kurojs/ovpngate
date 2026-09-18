@@ -63,6 +63,12 @@ Re-running it updates to the latest release only when the installed version diff
 ovpngate --version
 ```
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install kurojs/tap/ovpngate
+```
+
 ### Linux (AUR, recommended for Arch)
 
 ```bash
