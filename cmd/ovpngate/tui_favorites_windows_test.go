@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -103,6 +104,44 @@ func TestTUIPageMove(t *testing.T) {
 	m.pageMove(-18, 24)
 	if m.cursor != 0 {
 		t.Fatalf("pgup: cursor=%d quiero 0", m.cursor)
+	}
+}
+
+func makeMixedList(n int) []vpngate.Server {
+	out := make([]vpngate.Server, n)
+	cs := []string{"JP", "US", "BR"}
+	cl := []string{"Japan", "United States", "Brazil"}
+	for i := 0; i < n; i++ {
+		out[i] = vpngate.Server{
+			HostName:     "public-vpn-mixed",
+			IP:           fmt.Sprintf("10.0.%d.%d", i%250, i),
+			CountryShort: cs[i%3],
+			CountryLong:  cl[i%3],
+			Ping:         i % 150,
+			Speed:        (i * 11) % 3000,
+			Sessions:     i,
+		}
+	}
+	return out
+}
+
+// Regression del selector perdido: con grupos de pais intercalados cada
+// header consume una fila de pantalla, de modo que el indice de pantalla del
+// cursor (rowIdx) desfasa del indice de lista. scrollClamp debe mantenerlo
+// SIEMPRE dentro de la ventana, en cualquier posicion del cursor.
+func TestTUIScrollVisibleWithCountryHeaders(t *testing.T) {
+	m := newFavModel(t)
+	m.setServers(makeMixedList(30))
+	h := 24
+	rows := h - tuiHeaderRows - tuiFooterRows
+	for i := len(m.filtered) - 1; i >= 0; i-- {
+		m.cursor = i
+		m.scroll = 0
+		m.scrollClamp(h)
+		cr := m.rowIdx[m.cursor]
+		if cr < m.scroll || cr >= m.scroll+rows {
+			t.Fatalf("cursor %d (fila %d) fuera de ventana [%d,%d)", i, cr, m.scroll, m.scroll+rows)
+		}
 	}
 }
 

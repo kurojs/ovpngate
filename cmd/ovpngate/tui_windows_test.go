@@ -75,7 +75,9 @@ func TestTUIScrollClampKeepsCursorVisible(t *testing.T) {
 	}
 
 	// Lista más larga que la pantalla: forzar scroll hacia abajo y verificar
-	// que el cursor sigue visible tras mover.
+	// que el cursor sigue visible tras mover.  makeBigList es 100% JP, asi que
+	// hay UN header de pais: el scroll se cuenta en filas de pantalla, no en
+	// servers (rowIdx[49]=50), dando scroll 33, no 32 (50-18+1).
 	m.setServers(makeBigList(50))
 	m.cursor = 49
 	m.scroll = 0
@@ -83,8 +85,8 @@ func TestTUIScrollClampKeepsCursorVisible(t *testing.T) {
 	if m.cursor < m.scroll || m.cursor >= m.scroll+18 {
 		t.Fatalf("cursor %d fuera de ventana [%d,%d)", m.cursor, m.scroll, m.scroll+18)
 	}
-	if m.scroll != 32 {
-		t.Fatalf("scroll deberia ser 32 (=49-18+1), tengo %d", m.scroll)
+	if m.scroll != 33 {
+		t.Fatalf("scroll deberia ser 33 (=50-18+1 con header), tengo %d", m.scroll)
 	}
 }
 

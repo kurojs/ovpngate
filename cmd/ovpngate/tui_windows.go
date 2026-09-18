@@ -45,6 +45,7 @@ type tuiModel struct {
 	all      []vpngate.Server
 	sorted   []vpngate.Server // por velocidad desc (contrato de tests)
 	filtered []vpngate.Server // tras aplicar filtros
+	rowIdx   []int            // fila de pantalla de cada server (headers de pais incluidos)
 	cursor   int
 	scroll   int
 	loading  bool
@@ -104,6 +105,7 @@ func (m *tuiModel) setServers(s []vpngate.Server) {
 	if len(m.sorted) == 0 {
 		m.status = "no servers yet"
 		m.filtered = nil
+		m.rowIdx = nil
 		m.cursor = 0
 		m.scroll = 0
 		return
@@ -176,8 +178,26 @@ func (m *tuiModel) applyFilter() {
 	if m.cursor >= len(m.filtered) {
 		m.cursor = 0
 	}
+	m.rebuildRowIdx()
 	m.scroll = 0
 	m.scrollClamp(m.viewportRows())
+}
+
+// rebuildRowIdx calcula la fila de pantalla de cada server: los headers de
+// pais ocupan su propia fila (igual que en el dibujo), asi que desfasan el
+// indice de pantalla respecto del indice de la lista.
+func (m *tuiModel) rebuildRowIdx() {
+	m.rowIdx = make([]int, len(m.filtered))
+	row := 0
+	prev := ""
+	for i := range m.filtered {
+		if m.filtered[i].CountryShort != prev {
+			row++ // fila del header de pais
+			prev = m.filtered[i].CountryShort
+		}
+		m.rowIdx[i] = row
+		row++ // fila del server
+	}
 }
 
 // isFav consulta el store de favoritos (nulable en tests).
@@ -228,17 +248,32 @@ func (m *tuiModel) scrollClamp(h int) {
 	if rows < 1 {
 		rows = 1
 	}
-	if m.cursor < m.scroll {
-		m.scroll = m.cursor
+	if m.cursor < 0 {
+		m.cursor = 0
 	}
-	if m.cursor >= m.scroll+rows {
-		m.scroll = m.cursor - rows + 1
+	if m.cursor >= n {
+		m.cursor = n - 1
+	}
+	// La visibilidad se mide en filas de pantalla REALES (rowIdx incluye los
+	// headers de pais). Sin esto el cursor en la fila de abajo quedaba mas
+	// alla del borde visible: scrollClamp contaba servers, el dibujo filas.
+	cr := m.rowIdx[m.cursor]
+	if cr < m.scroll {
+		m.scroll = cr
+	}
+	if cr >= m.scroll+rows {
+		m.scroll = cr - rows + 1
+	}
+	total := m.rowIdx[n-1] + 1 // filas de pantalla totales (headers + servers)
+	maxScroll := total - rows
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.scroll > maxScroll {
+		m.scroll = maxScroll
 	}
 	if m.scroll < 0 {
 		m.scroll = 0
-	}
-	if m.scroll > n-1 {
-		m.scroll = n - 1
 	}
 }
 
@@ -458,19 +493,26 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		idx++
 	}
 
-	// Footer: status + posicion del scroll.
-	start := m.scroll
-	end := start + (h - tuiHeaderRows - tuiFooterRows)
-	if end > len(m.filtered) {
-		end = len(m.filtered)
-	}
-	if len(m.filtered) > 0 && end < start {
-		end = start
-	}
+	// Footer: status + posicion del scroll (rango de servers visibles).
 	emitStr(scr, 0, h-tuiFooterRows, m.status, muted, w)
 	pos := ""
 	if len(m.filtered) > 0 {
-		pos = fmt.Sprintf("%d-%d of %d", start+1, end, len(m.filtered))
+		rows := h - tuiHeaderRows - tuiFooterRows
+		if rows < 1 {
+			rows = 1
+		}
+		first, last := -1, -1
+		for i, r := range m.rowIdx {
+			if r >= m.scroll && r < m.scroll+rows {
+				if first == -1 {
+					first = i
+				}
+				last = i
+			}
+		}
+		if first != -1 {
+			pos = fmt.Sprintf("%d-%d of %d", first+1, last+1, len(m.filtered))
+		}
 	}
 	emitStr(scr, 0, h-tuiFooterRows+1, pos, muted, w)
 }
