@@ -40,7 +40,6 @@ type tuiModel struct {
 	loadErr  error
 	status   string
 	detail   *vpngate.Server
-	logs     []string
 
 	filter           string
 	filterCountry    string
@@ -304,24 +303,13 @@ func (m *tuiModel) resolveConn(res connResult) {
 	switch {
 	case res.cancelled:
 		m.connErr = nil
-		m.logs = appendLog(m.logs, "cancelled")
 	case res.err != nil:
 		m.connErr = res.err
-		m.logs = appendLog(m.logs, "error: "+res.err.Error())
 	default:
 		m.connected = m.detail
 		m.assignedIP = res.ip
 		m.connErr = nil
-		m.logs = appendLog(m.logs, "connected with IP: "+res.ip)
 	}
-}
-
-func appendLog(logs []string, line string) []string {
-	logs = append(logs, line)
-	if len(logs) > 6 {
-		logs = logs[len(logs)-6:]
-	}
-	return logs
 }
 
 func drawTUI(scr tcell.Screen, m *tuiModel) {
@@ -386,20 +374,6 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		}
 		emitStr(scr, 0, y, status, statusStyle, w)
 		emitStr(scr, 0, y+1, hints, muted, w)
-		if len(m.logs) > 0 {
-			ly := y + 2
-			for _, l := range m.logs {
-				ls := base
-				if len(l) >= 6 && l[:6] == "error:" {
-					ls = errSt
-				}
-				emitStr(scr, 0, ly, l, ls, w)
-				ly++
-				if ly > h-1 {
-					break
-				}
-			}
-		}
 		return
 	}
 
@@ -577,7 +551,6 @@ func runTUI() int {
 						if m.connecting {
 							connect.Cancel()
 							m.connecting = false
-							m.logs = appendLog(m.logs, "cancelled")
 							draw()
 						} else if m.connected != nil && m.connected.HostName == m.detail.HostName {
 
@@ -596,14 +569,12 @@ func runTUI() int {
 
 						} else if m.connected != nil && m.connected.HostName == m.detail.HostName {
 
-						} else if len(m.detail.OvpnConfig) == 0 {
-							m.connErr = errors.New("offline server, no ovpn config")
-							m.logs = appendLog(m.logs, "error: offline server, no ovpn config")
-							draw()
+					} else if len(m.detail.OvpnConfig) == 0 {
+						m.connErr = errors.New("offline server, no ovpn config")
+						draw()
 						} else {
 							m.connecting = true
 							m.connErr = nil
-							m.logs = appendLog(m.logs, "connecting...")
 							draw()
 							startConnect(m, resCh)
 						}
@@ -639,7 +610,6 @@ func runTUI() int {
 							if m.connecting {
 								connect.Cancel()
 								m.connecting = false
-								m.logs = appendLog(m.logs, "cancelled")
 								draw()
 							} else {
 								connect.Disconnect()
@@ -695,7 +665,6 @@ func runTUI() int {
 							m.assignedIP = ""
 							m.connErr = nil
 							m.detail = nil
-							m.logs = appendLog(m.logs, "disconnected")
 							draw()
 						}
 					case 'j', 'J':
