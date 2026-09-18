@@ -196,7 +196,10 @@ func logError() error {
 		switch {
 		case strings.Contains(lower, "failed to negotiate cipher"):
 			return fmt.Errorf("cipher negotiation failed: allow AES-128-CBC")
-		case strings.Contains(lower, "auth_failed"):
+		case strings.Contains(lower, "auth-failure"),
+			strings.Contains(lower, "auth failure"),
+			strings.Contains(lower, "auth_failed"),
+			strings.Contains(lower, "authentication failed"):
 			return fmt.Errorf("auth failed: use username/password vpn/vpn")
 		case strings.Contains(lower, "tls error"):
 			return fmt.Errorf("tls error: %s", line)
