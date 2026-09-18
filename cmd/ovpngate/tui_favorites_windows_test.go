@@ -79,7 +79,7 @@ func TestTUIDetectOfflineFavorites(t *testing.T) {
 
 func TestTUICycleCountry(t *testing.T) {
 	m := newFavModel(t)
-	// sample todos JP: ciclo 0 -> JP -> "" -> JP
+
 	m.cycleCountry()
 	if m.filterCountry != "JP" {
 		t.Fatalf("ciclo 1: filterCountry=%q quiero JP", m.filterCountry)
@@ -125,10 +125,6 @@ func makeMixedList(n int) []vpngate.Server {
 	return out
 }
 
-// Regression del selector perdido: con grupos de pais intercalados cada
-// header consume una fila de pantalla, de modo que el indice de pantalla del
-// cursor (rowIdx) desfasa del indice de lista. scrollClamp debe mantenerlo
-// SIEMPRE dentro de la ventana, en cualquier posicion del cursor.
 func TestTUIScrollVisibleWithCountryHeaders(t *testing.T) {
 	m := newFavModel(t)
 	m.setServers(makeMixedList(30))

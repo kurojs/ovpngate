@@ -2,19 +2,6 @@
 
 package main
 
-// main_windows.go — Windows entry point.
-//
-// Windows renders with tcell (see tui_windows.go).  bubbletea stays ONLY
-// on mac/linux (internal/ui, untouched).
-//
-// Modes handled here:
-//   - default          : TUI (runTUI)
-//   - --version        : print version and exit
-//   - --console-diagnose : diagnostics and exit
-//   - --helper workdir parentPID : elevated companion that runs OpenVPN
-//     (connect.RunHelper).  startOpenVPN relaunches THIS executable with
-//     "runas" when the user connects.
-
 import (
 	"fmt"
 	"os"

@@ -13,13 +13,12 @@ import (
 )
 
 func main() {
-	// Version query used by the installer/updater.
+
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Println(Version)
 		return
 	}
 
-	// Cache sudo credentials so OpenVPN can be launched without further prompts.
 	if os.Getuid() != 0 {
 		cmd := exec.Command("sudo", "-v")
 		cmd.Stdin = os.Stdin

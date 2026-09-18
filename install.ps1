@@ -1,8 +1,3 @@
-# ovpngate installer / updater for Windows
-# Usage:
-#   Install/update:  powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/kurojs/ovpngate/main/install.ps1 | iex"
-#   Or run locally:  powershell -ExecutionPolicy Bypass -File install.ps1
-
 $ErrorActionPreference = "Stop"
 
 $Repo   = "kurojs/ovpngate"
@@ -11,7 +6,6 @@ $Exe    = Join-Path $AppDir "ovpngate.exe"
 
 Write-Host "==> ovpngate installer" -ForegroundColor Cyan
 
-# 1. Find the latest version from GitHub Releases
 try {
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "ovpngate-installer" }
     $version = $release.tag_name.TrimStart("v")
@@ -21,14 +15,13 @@ try {
     exit 1
 }
 
-# 2. If already installed and up to date, we're done.
 if (Test-Path $Exe) {
     try {
         $current = & $Exe --version 2>&1 | Out-String
         if ($current -match "\d+\.\d+\.\d+") {
             $installedVersion = $Matches[0]
             if ($installedVersion -eq $version) {
-                Write-Host "==> ovpngate already at v$version — nothing to do." -ForegroundColor Green
+                Write-Host "==> ovpngate already at v$version 窶・nothing to do." -ForegroundColor Green
                 exit 0
             } else {
                 Write-Host "==> Updating ovpngate v$installedVersion -> v$version" -ForegroundColor Yellow
@@ -39,7 +32,6 @@ if (Test-Path $Exe) {
     }
 }
 
-# 3. Download the Windows binary from the release assets.
 $assetUrl = "https://github.com/$Repo/releases/download/v$version/ovpngate-windows-amd64.exe"
 $tmp = Join-Path $env:TEMP "ovpngate-download.exe"
 Write-Host "==> Downloading v$version ..." -ForegroundColor Cyan
@@ -50,7 +42,6 @@ try {
     exit 1
 }
 
-# 4. Install (or replace) into %LOCALAPPDATA%\ovpngate and add to user PATH.
 New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
 Move-Item -Force $tmp $Exe
 

@@ -2,18 +2,6 @@
 
 package main
 
-// ovpngate Windows: interfaz identica en funcionalidad a mac/linux
-// (palette lipgloss de internal/ui/styles.go, favoritos persistentes via
-// internal/favstore, filtros all/fast/fav/pais, conexion real via
-// internal/connect con OpenVPN + helper elevado). Lista agrupada por paises
-// con headers morados, ping clampeado 0..100ms. Fetch real con fallback
-// determinista offline (mismos 5 servers de muestra) para que la UI sea
-// demostrable sin red.
-//
-// DECISION: la conexion bloquea hasta 30s (WaitForTunnel), asi que corre en
-// una goroutine y el resultado vuelve por un channel. El loop principal usa
-// tcell ChannelEvents + select para no bloquear la UI mientras conecta.
-
 import (
 	"errors"
 	"fmt"
@@ -30,7 +18,6 @@ const (
 	tuiHeaderRows = 3
 	tuiFooterRows = 3
 
-	// Paleta identica a internal/ui/styles.go (lipgloss). Cero invento.
 	tuiColorText     = "#F3F6F9"
 	tuiColorMuted    = "#5C6170"
 	tuiColorPurpleLt = "#9C9CD4"
@@ -43,33 +30,33 @@ const (
 
 type tuiModel struct {
 	all      []vpngate.Server
-	sorted   []vpngate.Server // por velocidad desc (contrato de tests)
-	filtered []vpngate.Server // tras aplicar filtros
-	rowIdx   []int            // fila de pantalla de cada server (headers de pais incluidos)
+	sorted   []vpngate.Server
+	filtered []vpngate.Server
+	rowIdx   []int
 	cursor   int
 	scroll   int
+	viewH    int
 	loading  bool
 	loadErr  error
 	status   string
-	detail   *vpngate.Server // Enter abre la seccion de conexion/detalles
+	detail   *vpngate.Server
 	logs     []string
 
-	filter           string   // all | fast | fav
-	filterCountry    string   // "" = todos, o codigo de pais (JP...)
-	filterCountries  []string // paises disponibles, ordenados
+	filter           string
+	filterCountry    string
+	filterCountries  []string
 	filterCountryIdx int
 
-	connecting bool            // true = conectando al ovpn
-	connected  *vpngate.Server // server conectado, si hay
-	assignedIP string          // IP asignada por el tunel
-	connErr    error           // ultimo error de conexion
+	connecting bool
+	connected  *vpngate.Server
+	assignedIP string
+	connErr    error
 
 	favStore         *favstore.Store
 	offlineFavorites []vpngate.Server
 	offlineSet       map[string]bool
 }
 
-// connResult es lo que la goroutine de conexion devuelve al loop principal.
 type connResult struct {
 	cancelled bool
 	ip        string
@@ -80,10 +67,6 @@ func newTUIModel() *tuiModel {
 	return &tuiModel{cursor: 0, scroll: 0, loading: true, filter: "all", offlineSet: make(map[string]bool)}
 }
 
-// sampleServers devuelve datos deterministas (5 servers, sin mojibake),
-// igual contrato que los tests esperan (deterministico, len 5, max 2524).
-// No traen OvpnConfig: son la muestra offline, la UI los marca como
-// "unavailable" y no permite conectar.
 func sampleServers() []vpngate.Server {
 	return []vpngate.Server{
 		{HostName: "public-vpn-214", IP: "185.170.196.133", CountryShort: "JP", CountryLong: "Japan", Ping: 15, Speed: 2524, Sessions: 116},
@@ -130,9 +113,6 @@ func (m *tuiModel) buildCountryList() {
 	sort.Strings(m.filterCountries)
 }
 
-// detectOfflineFavorites marca los favoritos guardados que ya no estan en la
-// lista online: se siguen mostrando (en el filtro fav) para poder
-// desmarcarlos o verlos, con datos minimos.
 func (m *tuiModel) detectOfflineFavorites() {
 	m.offlineFavorites = nil
 	m.offlineSet = make(map[string]bool)
@@ -180,27 +160,25 @@ func (m *tuiModel) applyFilter() {
 	}
 	m.rebuildRowIdx()
 	m.scroll = 0
-	m.scrollClamp(m.viewportRows())
+	if m.viewH > 0 {
+		m.scrollClamp(m.viewH)
+	}
 }
 
-// rebuildRowIdx calcula la fila de pantalla de cada server: los headers de
-// pais ocupan su propia fila (igual que en el dibujo), asi que desfasan el
-// indice de pantalla respecto del indice de la lista.
 func (m *tuiModel) rebuildRowIdx() {
 	m.rowIdx = make([]int, len(m.filtered))
 	row := 0
 	prev := ""
 	for i := range m.filtered {
 		if m.filtered[i].CountryShort != prev {
-			row++ // fila del header de pais
+			row++
 			prev = m.filtered[i].CountryShort
 		}
 		m.rowIdx[i] = row
-		row++ // fila del server
+		row++
 	}
 }
 
-// isFav consulta el store de favoritos (nulable en tests).
 func (m *tuiModel) isFav(ip string) bool {
 	return m.favStore != nil && m.favStore.IsFavorite(ip)
 }
@@ -218,7 +196,6 @@ func (m *tuiModel) toggleFavorite(s vpngate.Server) {
 	m.applyFilter()
 }
 
-// cycleCountry avanza el filtro por paises ("" -> JP -> ... -> "").
 func (m *tuiModel) cycleCountry() {
 	m.filterCountryIdx++
 	if m.filterCountryIdx > len(m.filterCountries) {
@@ -234,8 +211,16 @@ func (m *tuiModel) cycleCountry() {
 	m.applyFilter()
 }
 
-func (m *tuiModel) viewportRows() int {
-	return tuiHeaderRows + tuiFooterRows + 1 // altura minima segura para clamp
+func (m *tuiModel) countryStart(cursor int) int {
+	if cursor <= 0 || len(m.filtered) == 0 {
+		return 0
+	}
+	c := m.filtered[cursor].CountryShort
+	i := cursor
+	for i > 0 && m.filtered[i-1].CountryShort == c {
+		i--
+	}
+	return i
 }
 
 func (m *tuiModel) scrollClamp(h int) {
@@ -254,17 +239,19 @@ func (m *tuiModel) scrollClamp(h int) {
 	if m.cursor >= n {
 		m.cursor = n - 1
 	}
-	// La visibilidad se mide en filas de pantalla REALES (rowIdx incluye los
-	// headers de pais). Sin esto el cursor en la fila de abajo quedaba mas
-	// alla del borde visible: scrollClamp contaba servers, el dibujo filas.
+
 	cr := m.rowIdx[m.cursor]
 	if cr < m.scroll {
 		m.scroll = cr
+		start := m.countryStart(m.cursor)
+		if start >= 0 {
+			m.scroll = m.rowIdx[start] - 1
+		}
 	}
 	if cr >= m.scroll+rows {
 		m.scroll = cr - rows + 1
 	}
-	total := m.rowIdx[n-1] + 1 // filas de pantalla totales (headers + servers)
+	total := m.rowIdx[n-1] + 1
 	maxScroll := total - rows
 	if maxScroll < 0 {
 		maxScroll = 0
@@ -292,7 +279,6 @@ func (m *tuiModel) moveCursor(delta, h int) {
 	m.scrollClamp(h)
 }
 
-// clampPing acota el ping a 0..100ms (promedio, como la seccion Linux).
 func clampPing(p int) int {
 	if p < 0 {
 		return 0
@@ -303,7 +289,6 @@ func clampPing(p int) int {
 	return p
 }
 
-// emitStr pinta una linea ASCII acotada al ancho w (sin mojibake).
 func emitStr(scr tcell.Screen, x, y int, s string, st tcell.Style, w int) {
 	if w <= 0 {
 		return
@@ -314,8 +299,6 @@ func emitStr(scr tcell.Screen, x, y int, s string, st tcell.Style, w int) {
 	}
 }
 
-// resolveConn aplica el resultado de la goroutine de conexion al modelo.
-// Es una funcion pura para poder testearla headless.
 func (m *tuiModel) resolveConn(res connResult) {
 	m.connecting = false
 	switch {
@@ -333,7 +316,6 @@ func (m *tuiModel) resolveConn(res connResult) {
 	}
 }
 
-// appendLog mantiene un buffer acotado de logs (ultimas 6 lineas).
 func appendLog(logs []string, line string) []string {
 	logs = append(logs, line)
 	if len(logs) > 6 {
@@ -342,15 +324,13 @@ func appendLog(logs []string, line string) []string {
 	return logs
 }
 
-// drawTUI pinta list + seccion de conexion/detalles (Enter) + agrupacion por
-// paises, con la misma palette que Linux. El cursor navega servers; los
-// headers de pais se insertan como filas moradas.
 func drawTUI(scr tcell.Screen, m *tuiModel) {
 	scr.Clear()
 	w, h := scr.Size()
 	if h <= 0 {
 		return
 	}
+	m.viewH = h
 
 	base := tcell.StyleDefault.Foreground(tcell.GetColor(tuiColorText))
 	purple := base.Foreground(tcell.GetColor(tuiColorPurple))
@@ -359,9 +339,8 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 	green := base.Foreground(tcell.GetColor(tuiColorGreen))
 	yellow := base.Foreground(tcell.GetColor(tuiColorWarning))
 	errSt := base.Foreground(tcell.GetColor(tuiColorError))
-	inv := base.Reverse(true)
+	sel := base.Background(tcell.GetColor("#3D6B52"))
 
-	// Seccion de conexion/detalles (Enter): igual que Linux.
 	if m.detail != nil {
 		d := m.detail
 		emitStr(scr, 0, 0, "ovpngate  ["+d.CountryShort+"]  "+d.CountryLong, purple, w)
@@ -424,7 +403,6 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		return
 	}
 
-	// Header: titulo + filtros activos + teclas (la unica linea de atajos).
 	header := "ovpngate"
 	if m.filterCountry != "" {
 		header += "  [" + m.filterCountry + "]"
@@ -461,9 +439,6 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		return
 	}
 
-	// Lista agrupada por paises: header morado antes del primer server de un
-	// nuevo pais (mecanismo identico a la seccion mac/linux). El contador idx
-	// avanza siempre (visible o no) para que el scroll sea consistente.
 	prevCountry := ""
 	idx := 0
 	for i := 0; i < len(m.filtered); i++ {
@@ -480,7 +455,7 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		if rowY >= tuiHeaderRows && rowY < h-tuiFooterRows {
 			st := base
 			if i == m.cursor {
-				st = inv
+				st = sel
 			}
 			star := "  "
 			if m.isFav(s.IP) {
@@ -493,7 +468,6 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 		idx++
 	}
 
-	// Footer: status + posicion del scroll (rango de servers visibles).
 	emitStr(scr, 0, h-tuiFooterRows, m.status, muted, w)
 	pos := ""
 	if len(m.filtered) > 0 {
@@ -517,8 +491,6 @@ func drawTUI(scr tcell.Screen, m *tuiModel) {
 	emitStr(scr, 0, h-tuiFooterRows+1, pos, muted, w)
 }
 
-// startConnect lanza la conexion real en background (OpenVPN via helper
-// elevado). El resultado va por resCh; nunca toca la pantalla desde aca.
 func startConnect(m *tuiModel, resCh chan connResult) {
 	if m.detail == nil {
 		return
@@ -538,7 +510,6 @@ func startConnect(m *tuiModel, resCh chan connResult) {
 	}()
 }
 
-// runTUI es el loop principal de Windows. Devuelve codigo de salida.
 func runTUI() int {
 	m := newTUIModel()
 
@@ -573,9 +544,6 @@ func runTUI() int {
 	}
 	defer scr.Fini()
 
-	// La conexion corre en background: solo un canal para sus resultados y
-	// los eventos del usuario entrando por ChannelEvents -> select evita que
-	// una conexion de 30s congele la interfaz.
 	evCh := make(chan tcell.Event, 32)
 	evQuit := make(chan struct{})
 	defer close(evQuit)
@@ -595,7 +563,7 @@ func runTUI() int {
 			draw()
 		case ev, ok := <-evCh:
 			if !ok {
-				// El screen se cerro (Fini): terminamos.
+
 				connect.Disconnect()
 				return 0
 			}
@@ -612,7 +580,7 @@ func runTUI() int {
 							m.logs = appendLog(m.logs, "cancelled")
 							draw()
 						} else if m.connected != nil && m.connected.HostName == m.detail.HostName {
-							// Conectado: esc no desconecta, d lo hace.
+
 						} else {
 							m.connErr = nil
 							m.detail = nil
@@ -625,9 +593,9 @@ func runTUI() int {
 				case tcell.KeyEnter:
 					if m.detail != nil {
 						if m.connecting {
-							// Ya conectando: ignorar repetidos.
+
 						} else if m.connected != nil && m.connected.HostName == m.detail.HostName {
-							// Ya conectado a este server: no reconectar.
+
 						} else if len(m.detail.OvpnConfig) == 0 {
 							m.connErr = errors.New("offline server, no ovpn config")
 							m.logs = appendLog(m.logs, "error: offline server, no ovpn config")
@@ -710,7 +678,7 @@ func runTUI() int {
 						if m.favStore != nil {
 							if m.detail != nil {
 								if m.connected != nil && m.connected.HostName == m.detail.HostName {
-									// No tocar favorito del server conectado.
+
 								} else {
 									m.toggleFavorite(*m.detail)
 									draw()

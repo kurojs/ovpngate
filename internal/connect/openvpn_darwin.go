@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// findTunnelIP detects the tunnel IP by querying network interfaces via
-// ifconfig.  OpenVPN on macOS typically uses a utun (or tun/tap) interface.
 func findTunnelIP() (string, bool) {
 	out, err := exec.Command("ifconfig").Output()
 	if err != nil {
@@ -17,7 +15,7 @@ func findTunnelIP() (string, bool) {
 	lines := strings.Split(string(out), "\n")
 	var currentIface string
 	for _, line := range lines {
-		// Interface header lines start at column 0 and end with ":".
+
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(line, ":") {
 			currentIface = strings.SplitN(line, ":", 2)[0]
 			continue

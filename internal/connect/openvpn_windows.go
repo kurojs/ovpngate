@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-// checkOpenVPN verifies openvpn is available on the system PATH, falling
-// back to the standard install location.
 func checkOpenVPN() error {
 	if _, err := openvpnBinary(); err != nil {
 		return fmt.Errorf("openvpn not found: install from https://openvpn.net/community-downloads/")
@@ -23,8 +21,6 @@ func checkOpenVPN() error {
 	return nil
 }
 
-// openvpnBinary resolves the full path to the OpenVPN executable: first via
-// PATH lookup, then via the standard Program Files install location.
 func openvpnBinary() (string, error) {
 	if p, err := exec.LookPath("openvpn"); err == nil {
 		return p, nil
@@ -36,11 +32,6 @@ func openvpnBinary() (string, error) {
 	return "", fmt.Errorf("openvpn executable not found")
 }
 
-// startOpenVPN launches OpenVPN through the elevated helper instance.  The
-// TUI itself never runs elevated: it writes the helper spec, asks Windows to
-// start a helper copy of this executable with "runas" (UAC), and waits for
-// the helper to report OpenVPN's PID.  Killing works the same way — the
-// helper is the only process that can terminate its elevated OpenVPN child.
 func startOpenVPN(args []string, logFile *os.File) error {
 	bin, err := openvpnBinary()
 	if err != nil {
@@ -64,8 +55,6 @@ func startOpenVPN(args []string, logFile *os.File) error {
 		return fmt.Errorf("current executable missing: %w", err)
 	}
 
-	// PowerShell quoting is safe here: single quotes are invalid in Windows
-	// paths, so embedding the exe and workdir in single quotes never breaks.
 	workdir := filepath.Clean(tempDir)
 	parentPID := os.Getpid()
 	psCmd := fmt.Sprintf(
@@ -81,7 +70,6 @@ func startOpenVPN(args []string, logFile *os.File) error {
 		return fmt.Errorf("elevation denied or failed: %v (%s)", err, strings.TrimSpace(errBuf.String()))
 	}
 
-	// The helper writes helper.pid and openvpn.pid shortly after launch.
 	if err := waitForPIDFile(openvpnPIDPath(), 5*time.Second); err != nil {
 		return fmt.Errorf("openvpn did not start after elevation: %w", err)
 	}
@@ -97,7 +85,6 @@ func startOpenVPN(args []string, logFile *os.File) error {
 func openvpnPIDPath() string { return filepath.Join(tempDir, "openvpn.pid") }
 func helperPIDPath() string  { return filepath.Join(tempDir, "helper.pid") }
 
-// waitForPIDFile polls until the pid file exists (or the deadline passes).
 func waitForPIDFile(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -117,10 +104,6 @@ func readPID(path string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(string(data)))
 }
 
-// killCurrentProcess signals the elevated helper via the cancel file and
-// waits for it to shut OpenVPN down.  If the helper refuses to exit we keep
-// the temp dir so it can still reach the cancel marker; the next disconnect
-// attempt finishes the cleanup.
 func killCurrentProcess() {
 	if tempDir == "" {
 		return
@@ -142,16 +125,10 @@ func killCurrentProcess() {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Helper is stuck: preserve tempDir so a later attempt can finish.
 	currentHelperPID = 0
 	skipCleanup = true
 }
 
-// findTunnelIP detects the tunnel IP by parsing the OpenVPN log.
-// OpenVPN on Windows never logs a standalone "ifconfig" line (that is the
-// Unix format); the assigned address appears either embedded inside the
-// PUSH_REPLY control message or in the TAP-Windows DHCP notification.
-// All three shapes are matched so detection is robust across versions.
 func findTunnelIP() (string, bool) {
 	if currentLogPath == "" {
 		return "", false
@@ -161,9 +138,6 @@ func findTunnelIP() (string, bool) {
 		return "", false
 	}
 
-	// 1) Unix-style line: "ifconfig 10.x.x.x 10.x.x.x netmask ..."
-	// 2) Windows PUSH_REPLY: "... PUSH_REPLY,ping 3,...,ifconfig 10.x.x.x 10.x.x.x,route-gateway ..."
-	// 3) Windows TAP notify: "Notified TAP-Windows driver to set a DHCP IP/netmask of 10.x.x.x/255..."
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "ifconfig") {
@@ -190,9 +164,6 @@ func findTunnelIP() (string, bool) {
 	return "", false
 }
 
-// ipFromLine extracts the first IPv4 address that appears to the right of an
-// "ifconfig" marker (PUSH_REPLY embeds "ifconfig <local> <remote>,route-...")
-// or the first dotted quad found in the line as a fallback.
 func ipFromLine(line string) (string, bool) {
 	lower := strings.ToLower(line)
 	for _, marker := range []string{"ifconfig ", "ip/netmask of "} {
@@ -209,8 +180,6 @@ func ipFromLine(line string) (string, bool) {
 	return "", false
 }
 
-// ensureElevation is a no-op on Windows: the TUI never needs elevation; the
-// OpenVPN child gets it through the elevated helper at connect time.
 func ensureElevation() error {
 	return nil
 }

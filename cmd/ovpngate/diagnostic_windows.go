@@ -10,13 +10,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// captureOutput tees every byte written to the real terminal output into a
-// capture file as well, then forwards the payload to its target (the raw or
-// ConPTY-safe stream).  It embeds *os.File so it still satisfies term.File
-// (the Windows tty detection in bubbletea asserts p.output.(term.File) and
-// reads Fd()), while Write duplicates the payload to the capture file.  Used
-// only when OVPNGATE_CAPTURE_OUTPUT is set, to record the exact ANSI stream
-// the TUI emits.
 type captureOutput struct {
 	*os.File
 	capture *os.File
@@ -28,12 +21,6 @@ func (c *captureOutput) Write(p []byte) (int, error) {
 	return c.target.Write(p)
 }
 
-// WriteString intercepts the string fast path as well.  The embedded *os.File
-// would otherwise promote its own WriteString and bubbletea's renderer uses
-// io.WriteString(r.out, seq) for every terminal control sequence (hide cursor,
-// alt screen enter/exit, bracketed paste, ...).  Those sequences must reach
-// the capture file too, or the capture looks like the TUI never entered the
-// alternate screen when it actually did.
 func (c *captureOutput) WriteString(s string) (int, error) {
 	_, _ = c.capture.WriteString(s)
 	if sw, ok := c.target.(io.StringWriter); ok {
@@ -42,11 +29,6 @@ func (c *captureOutput) WriteString(s string) (int, error) {
 	return c.target.Write([]byte(s))
 }
 
-// consoleDump prints a structured report of what the running terminal
-// backend actually reports through the Windows console APIs.  It exists to
-// stop guessing: the legacy-conhost vs ConPTY distinction, whether virtual
-// terminal processing is (or can be) enabled, and the real visible buffer
-// size are all facts we need before choosing the rendering mode.
 func consoleDump() {
 	fmt.Println("== ovpngate console diagnostic ==")
 	fmt.Println(Version)
@@ -111,7 +93,6 @@ func consoleDump() {
 		dumpHandle("STDIN", out2)
 	}
 
-	// Try to enable VT on the output handle and confirm it sticks.
 	if err == nil {
 		var mode uint32
 		if werr := windows.GetConsoleMode(out, &mode); werr == nil {

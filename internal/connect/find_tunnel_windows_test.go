@@ -4,11 +4,6 @@ package connect
 
 import "testing"
 
-// These are the exact log shapes produced by OpenVPN 2.7.7 on Windows during
-// a real VPN Gate connection. OpenVPN on Windows never logs a standalone
-// "ifconfig" line (Unix format only); the assigned address is embedded in the
-// PUSH_REPLY control message and repeated as a TAP-Windows DHCP notification.
-// This regression test pins both shapes so detection cannot silently regress.
 func TestFindTunnelIPWindowsShapes(t *testing.T) {
 	cases := []struct {
 		name string

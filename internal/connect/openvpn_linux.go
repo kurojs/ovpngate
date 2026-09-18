@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// findTunnelIP detects the tunnel IP by querying network interfaces via ip(8)
-// (iproute2).
 func findTunnelIP() (string, bool) {
 	out, err := exec.Command("ip", "-o", "-4", "addr", "show").Output()
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"syscall"
 )
 
-// checkOpenVPN verifies openvpn is available on the system PATH.
 func checkOpenVPN() error {
 	if _, err := exec.LookPath("openvpn"); err != nil {
 		return fmt.Errorf("openvpn not found: install it first (e.g. 'sudo pacman -S openvpn' or 'brew install openvpn')")
@@ -17,7 +16,6 @@ func checkOpenVPN() error {
 	return nil
 }
 
-// killCurrentProcess terminates OpenVPN gracefully with SIGTERM.
 func killCurrentProcess() {
 	if currentCmd != nil && currentCmd.Process != nil {
 		_ = currentCmd.Process.Signal(syscall.SIGTERM)
@@ -25,8 +23,6 @@ func killCurrentProcess() {
 	}
 }
 
-// startOpenVPN launches OpenVPN directly, escalating via sudo when needed,
-// and records the running process for later cancellation.
 func startOpenVPN(args []string, logFile *os.File) error {
 	cmd := openvpnCmd(args)
 	cmd.Stdout = logFile
@@ -39,7 +35,6 @@ func startOpenVPN(args []string, logFile *os.File) error {
 	return nil
 }
 
-// openvpnCmd builds the OpenVPN command, escalating via sudo when needed.
 func openvpnCmd(args []string) *exec.Cmd {
 	if os.Getuid() == 0 {
 		return exec.Command("openvpn", args...)
@@ -48,7 +43,6 @@ func openvpnCmd(args []string) *exec.Cmd {
 	return exec.Command("sudo", full...)
 }
 
-// ensureElevation verifies sudo credentials are cached for the session.
 func ensureElevation() error {
 	if os.Getuid() == 0 {
 		return nil

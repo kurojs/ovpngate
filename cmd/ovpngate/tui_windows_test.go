@@ -10,13 +10,6 @@ import (
 	"github.com/kurojs/ovpngate/internal/vpngate"
 )
 
-// The Windows TUI's core contract is a CORRECT list interface: sorted rows, a
-// clamped cursor, and a scroll state that ALWAYS keeps the inverted cursor row
-// visible, plus a pure connection resolver.  None of that needs a screen — it's
-// pure data, so it's provable headless with table tests.  (Name collisions
-// with bubbletea's model tests on mac/linux are impossible: this file is
-// windows-tagged.)
-
 func TestTUISampleDeterministic(t *testing.T) {
 	a := sampleServers()
 	b := sampleServers()
@@ -65,7 +58,7 @@ func TestTUIMoveCursorClamps(t *testing.T) {
 func TestTUIScrollClampKeepsCursorVisible(t *testing.T) {
 	m := newTUIModel()
 	m.setServers(sampleServers())
-	// head 3 + foot 3 => con h=24 hay 18 filas de lista; 5 servers caben.
+
 	h := 24
 	m.cursor = 4
 	m.scroll = 0
@@ -74,10 +67,6 @@ func TestTUIScrollClampKeepsCursorVisible(t *testing.T) {
 		t.Fatalf("cursor %d fuera de ventana [%d,%d)", m.cursor, m.scroll, m.scroll+18)
 	}
 
-	// Lista más larga que la pantalla: forzar scroll hacia abajo y verificar
-	// que el cursor sigue visible tras mover.  makeBigList es 100% JP, asi que
-	// hay UN header de pais: el scroll se cuenta en filas de pantalla, no en
-	// servers (rowIdx[49]=50), dando scroll 33, no 32 (50-18+1).
 	m.setServers(makeBigList(50))
 	m.cursor = 49
 	m.scroll = 0
@@ -94,7 +83,7 @@ func TestTUICursorVisibleAfterShrink(t *testing.T) {
 	m := newTUIModel()
 	m.setServers(makeBigList(10))
 	m.cursor = 9
-	m.setServers(sampleServers()) // 10 -> 5
+	m.setServers(sampleServers())
 	if m.cursor >= len(m.sorted) {
 		t.Fatalf("cursor %d no clampado tras encoger a %d", m.cursor, len(m.sorted))
 	}

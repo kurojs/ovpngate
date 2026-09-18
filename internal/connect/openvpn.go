@@ -87,7 +87,7 @@ func Connect(hostname string, ovpnConfig []byte) (int, error) {
 	defer logFile.Close()
 
 	if err := startOpenVPN(args, logFile); err != nil {
-		// Nothing may have started: reset state so the temp dir is not leaked.
+
 		cleanupFiles()
 		return 0, err
 	}
