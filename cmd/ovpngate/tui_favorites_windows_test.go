@@ -1,0 +1,120 @@
+//go:build windows
+
+package main
+
+import (
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"github.com/kurojs/ovpngate/internal/favstore"
+	"github.com/kurojs/ovpngate/internal/vpngate"
+)
+
+func newFavModel(t *testing.T) *tuiModel {
+	t.Helper()
+	m := newTUIModel()
+	m.favStore = favstore.New(filepath.Join(t.TempDir(), "fav.json"))
+	m.setServers(sampleServers())
+	return m
+}
+
+func TestTUIApplyFilterFast(t *testing.T) {
+	m := newFavModel(t)
+	m.filter = "fast"
+	m.applyFilter()
+	if len(m.filtered) != 5 {
+		t.Fatalf("fast: filtered=%d quiero 5", len(m.filtered))
+	}
+	for i := 1; i < len(m.filtered); i++ {
+		if m.filtered[i-1].Speed < m.filtered[i].Speed {
+			t.Fatalf("fast desordenado en %d", i)
+		}
+	}
+}
+
+func TestTUIApplyFilterFavWithOffline(t *testing.T) {
+	m := newFavModel(t)
+	m.favStore.Add("185.170.196.133", "public-vpn-214", "JP", "Japan")
+	m.favStore.Add("9.9.9.9", "dead-host", "US", "United States")
+	m.detectOfflineFavorites()
+	m.filter = "fav"
+	m.applyFilter()
+	if len(m.filtered) != 2 {
+		t.Fatalf("fav: filtered=%d quiero 2 (1 online + 1 offline)", len(m.filtered))
+	}
+	if !m.isFav(m.filtered[0].IP) && !m.isFav(m.filtered[1].IP) {
+		t.Fatalf("fav deberia contener solo favoritos")
+	}
+	if len(m.offlineFavorites) != 1 || m.offlineFavorites[0].IP != "9.9.9.9" {
+		t.Fatalf("offlineFavorites inesperado: %+v", m.offlineFavorites)
+	}
+}
+
+func TestTUIToggleFavoriteAddRemove(t *testing.T) {
+	m := newFavModel(t)
+	s := m.sorted[0]
+	m.toggleFavorite(s)
+	if !m.isFav(s.IP) {
+		t.Fatalf("toggle no agrego favorito %s", s.IP)
+	}
+	m.toggleFavorite(s)
+	if m.isFav(s.IP) {
+		t.Fatalf("toggle no removio favorito %s", s.IP)
+	}
+}
+
+func TestTUIDetectOfflineFavorites(t *testing.T) {
+	m := newFavModel(t)
+	m.favStore.Add("10.0.0.1", "gone", "AR", "Argentina")
+	m.detectOfflineFavorites()
+	if len(m.offlineFavorites) != 1 {
+		t.Fatalf("offlineFavorites=%d quiero 1", len(m.offlineFavorites))
+	}
+	if !m.offlineSet["10.0.0.1"] {
+		t.Fatalf("offlineSet no marco la IP fantasma")
+	}
+}
+
+func TestTUICycleCountry(t *testing.T) {
+	m := newFavModel(t)
+	// sample todos JP: ciclo 0 -> JP -> "" -> JP
+	m.cycleCountry()
+	if m.filterCountry != "JP" {
+		t.Fatalf("ciclo 1: filterCountry=%q quiero JP", m.filterCountry)
+	}
+	m.cycleCountry()
+	if m.filterCountry != "" {
+		t.Fatalf("ciclo 2: filterCountry=%q quiero vacio", m.filterCountry)
+	}
+	if len(m.filtered) != 5 {
+		t.Fatalf("sin filtro de pais: filtered=%d quiero 5", len(m.filtered))
+	}
+}
+
+func TestTUIPageMove(t *testing.T) {
+	m := newFavModel(t)
+	m.setServers(makeBigList(50))
+	m.cursor = 0
+	m.pageMove(18, 24)
+	if m.cursor != 18 {
+		t.Fatalf("pgdn: cursor=%d quiero 18", m.cursor)
+	}
+	m.pageMove(-18, 24)
+	if m.cursor != 0 {
+		t.Fatalf("pgup: cursor=%d quiero 0", m.cursor)
+	}
+}
+
+func TestTUIFilteredPointersStable(t *testing.T) {
+	m := newFavModel(t)
+	m.filter = "fav"
+	m.applyFilter()
+	if len(m.filtered) != 0 {
+		t.Fatalf("sin favoritos filtrado deberia ser vacio, tengo %d", len(m.filtered))
+	}
+	m.detail = nil
+	if got := reflect.DeepEqual(m.filtered, []vpngate.Server{}); !got {
+		t.Fatalf("filtered no refleja union vacia")
+	}
+}
