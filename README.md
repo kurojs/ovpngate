@@ -13,6 +13,12 @@ A terminal-based OpenVPN client for the [VPN Gate](https://www.vpngate.net/) pub
       <td align="center"><em>Live server list with country flag, ping, speed, sessions, and operator</em></td>
       <td align="center"><em>Server detail with stats, operator message, and connection controls</em></td>
     </tr>
+    <tr>
+      <td colspan="2" align="center"><img src="https://i.imgur.com/1E2FIPs.png" width="400" alt="Windows 11"/></td>
+    </tr>
+    <tr>
+      <td colspan="2" align="center"><em>Native Windows build — PowerShell terminal, UAC elevation only at connect</em></td>
+    </tr>
   </table>
 </div>
 
